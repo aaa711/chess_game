@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="https://cdn.bootcss.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css"
+          integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ"
+          crossorigin="anonymous">
+
+	<style type="text/css">
+		.chess_area {
+			position: relative;
+			background: #ABDFCF;
+		}
+		.button_area {
+			position: absolute;
+			top :100px;
+			right: 200px;
+			display: flex;
+    		flex-direction: column;
+		}
+		.button_area button {
+			width: 120px;
+   			height: 50px;
+    		background: #1dbb9c;
+    		-webkit-border-radius: 3px;
+		    -moz-border-radius: 3px;
+		    border-radius: 3px;
+		    border-bottom: 2px #199f85 solid;
+		    display: inline-block;
+		    text-align: center;
+		    line-height: 50px;
+		    font-size: 21px;
+		    color: #fff;
+		    border: none;
+		    margin-bottom: 20px;
+		    outline: none;
+		}
+		.button_area button:hover {
+			background: #2bcaab;
+		}
+		#myCanvas {
+			width: 1024px;
+			height: 768px;
+		}
+		.foot {
+			width: 100%;
+    		height: 40px;
+		    background: transparent;
+		    color: #343434;
+		    text-align: center;
+		}
+		.foot a {
+			text-decoration: none;
+			color: #343434;
+		}
+	</style>
+</head>
+
+<body>
+
+<div class="chess_area">
+	<canvas id="myCanvas" width="1024" height="768"></canvas>
+
+	<div class="button_area">
+	    <button id="undo">悔棋</button>
+	    <button id="redo">撤销悔棋</button>
+	    <button id="restart">重新开始</button>
+	</div>
+	<div class="foot">
+		<p> <a href="http://180.76.187.106/" target="_blank">Copyright © 2017 - Yating li 点击联系我</a></p>
+	</div>
+</div>
+
+
+
+<script type="text/javascript">
+    var canvas,context,chessColor,isMyTurn,isOver;
+    var operations, undoOperations, gameData;
+    var num = 40;
+    console.log(num);
+	window.onload = function () {
+		canvas = document.getElementById("myCanvas");
+		context = canvas.getContext("2d");
+		chessColor = "#ABDFCF";
+		isMyTurn = true;
+		isOver = false;
+		operations = [];
+		undoOperations = [];
+		var undoBtn = document.getElementById("undo");
+		var redoBtn = document.getElementById("redo");
+		var restartBtn = document.getElementById("restart");
+
+		//数组 gameData[i][j] =2为白色棋子，1为黑色， 0为没有棋子
+		gameData = new Array(15);
+		for (var i = 0; i < 15; i++) {
+			gameData[i] = new Array(15);
+		}
+
+		init();
+
+
+
+		canvas.addEventListener('mousedown', function (e) {
+			if (isOver) {
+				alert("游戏结束，请重新开始")
+				return;
+			}
+			var e = e || event;
+			var px = e.clientX - 160;
+			var py = e.clientY - 60;
+			var x = parseInt(px / 40);
+			var y = parseInt(py / 40);
+
+			//棋盘外不响应
+			if (px < 0 || py < 0 || x > 14 || y > 14 || gameData[x][y] != 0) {
+				return;
+			}
+
+			// 鼠标在这个某个范围,棋子就绘制在这个点的正中心
+			if (!isNearEnough(px) || !isNearEnough(py)) {
+				return;
+			}
+			chess(isMyTurn, x, y);
+			isMyTurn = !isMyTurn;
+		});
+		// 悔棋
+		undoBtn.onclick = function () {
+			if (isOver) {
+				alert("游戏结束，请重新开始")
+				return;
+			}
+			if (operations.length == 0) {
+				alert("无法继续悔棋");
+				return;
+			}
+			var lastMove = operations.pop();
+			undoOperations.push(lastMove);
+			console.log("悔棋：" + lastMove.x + ", " + lastMove.y)
+			clearChess(lastMove.x, lastMove.y);
+			isMyTurn = !isMyTurn;
+		}
+		// 撤销悔棋
+		redoBtn.onclick = function () {
+			if (isOver) {
+				alert("游戏结束，请重新开始")
+				return;
+			}
+			if (undoOperations.length == 0) {
+				alert("无法继续撤销悔棋");
+				return;
+			}
+			var lastUndo = undoOperations.pop();
+			console.log("反悔棋：" + lastUndo.x + ", " + lastUndo.y)
+			chess(isMyTurn, lastUndo.x, lastUndo.y);
+			isMyTurn = !isMyTurn;
+		}
+		//	重新开始
+		restartBtn.onclick = function () {
+			init();
+		}
+
+
+	}
+
+    function init() {
+	    isMyTurn = true;
+	    isOver = false;
+        operations = [];
+        undoOperations = [];
+	    for (var i = 0; i < 15; i++) {
+		    for (var j = 0; j < 15; j++) {
+			    gameData[i][j] = 0;
+		    }
+	    }
+	    drawRect();
+    }
+
+    function drawRect() {
+	    context.fillStyle = chessColor;
+	    context.fillRect(0, 0, 1024, 768);
+	    context.fillStyle = '#304051';
+	    context.font = '40px Arial';
+	    context.fillText('五子棋', 380, 50);
+
+	    for (var i = 1; i < 16; i++) {
+	    	//画横线 x 不同 y 相同
+	    	context.beginPath();
+		    context.moveTo(180, num * i + num);
+		    context.lineTo(740, num * i + num);
+		    context.closePath();
+		    context.stroke();
+			//画竖线 x 相同 y 不同
+			context.beginPath();
+		    context.moveTo(num * i + 140, 80);
+		    context.lineTo(num * i + 140, 640);
+		    context.closePath();
+		    context.stroke();
+
+	    }
+    }
+
+    //当距离节点比较近的时候才允许落子
+    function isNearEnough(pos) {
+
+	    var offset = pos / num - Math.floor(pos / num);
+//			console.log(offset)
+	    if (offset < 0.2 || offset > 0.8) {
+		    return false;
+	    }
+	    return true;
+    }
+
+    function isWin(x, y) {
+	    // 横向判断赢否
+	    var cnt = 1;
+	    var i, j;
+	    var pivot = gameData[x][y];
+
+	    i = x;
+	    j = y;
+	    while (i > 0) {
+		    i--;
+		    if (gameData[i][j] == pivot) {
+			    cnt++;
+		    }
+		    else {
+			    break;
+		    }
+	    }
+
+	    i = x;
+	    j = y;
+	    while (i < 14) {
+		    i++;
+		    if (gameData[i][j] == pivot) {
+			    cnt++;
+		    }
+		    else {
+			    break;
+		    }
+	    }
+
+	    if (cnt == 5) {
+		    return true;
+	    } else {
+		    cnt = 1;
+	    }
+
+
+	    // 竖向判断赢否
+	    i = x;
+	    j = y;
+	    while (j > 0) {
+		    j--;
+		    if (gameData[i][j] == pivot) {
+			    cnt++;
+		    }
+		    else {
+			    break;
+		    }
+	    }
+
+	    i = x;
+	    j = y;
+	    while (j < 14) {
+		    j++;
+		    if (gameData[i][j] == pivot) {
+			    cnt++;
+		    }
+		    else {
+			    break;
+		    }
+	    }
+	    if (cnt == 5) {
+		    return true;
+	    } else {
+		    cnt = 1;
+	    }
+
+	    // 左上右下向判断赢否
+	    i = x;
+	    j = y;
+	    while (i > 0 && j > 0) {
+		    i--;
+		    j--;
+		    if (gameData[i][j] == pivot) {
+			    cnt++;
+		    }
+		    else {
+			    break;
+		    }
+	    }
+
+	    i = x;
+	    j = y;
+	    while (i < 14 && j < 14) {
+		    i++;
+		    j++;
+		    if (gameData[i][j] == pivot) {
+			    cnt++;
+		    }
+		    else {
+			    break;
+		    }
+	    }
+	    if (cnt == 5) {
+		    return true;
+	    } else {
+		    cnt = 1;
+	    }
+
+	    // 左下右上向判断赢否
+	    i = x;
+	    j = y;
+	    while (j > 0 && i < 14) {
+		    i++;
+		    j--;
+		    if (gameData[i][j] == pivot) {
+			    cnt++;
+		    }
+		    else {
+			    break;
+		    }
+	    }
+
+	    i = x;
+	    j = y;
+	    while (j < 14 && i > 0) {
+		    i--;
+		    j++;
+		    if (gameData[i][j] == pivot) {
+			    cnt++;
+		    }
+		    else {
+			    break;
+		    }
+	    }
+	    if (cnt == 5) {
+		    return true;
+	    }
+	    return false;
+    }
+
+    //绘棋子 画一个圆形 并存入二维数组 棋子地址信息
+    function chess(isMyTurn, x, y) {
+	    context.fillStyle = isMyTurn ? "black" : "white"; //设置棋子颜色
+	    context.beginPath();
+	    context.arc(x * num + 180, y * num + 80, 15, 0, Math.PI * 2, true);
+	    context.closePath();
+	    context.fill();
+	    gameData[x][y] = isMyTurn ? 1 : 2;
+	    // 下棋操作记录
+	    operations.push({
+		    x: x,
+		    y: y,
+		    myTurn: isMyTurn
+	    });
+
+	    isOver = isWin(x, y);
+	    if (isOver) {
+		    var str = isMyTurn ? "黑棋" : "白棋";
+		    alert("游戏结束, " + str + "获胜");
+	    }
+    }
+
+    function clearChess(x, y) {
+	    context.fillStyle = chessColor; //设置底色
+	    context.beginPath();
+	    context.arc(x * num + 180, y * num + 80, 18, 0, Math.PI * 2, true);
+	    context.closePath();
+	    context.fill();
+	    gameData[x][y] = 0;
+	    //补线
+	    var lineX = num * x + 180;
+	    var lineY = num * y + 80;
+	    var linex0 = 160 + x * num;
+	    var linex1 = 200 + x * num;
+	    var liney0 = 60 + y * num;
+	    var liney1 = 100 + y * num;
+	    context.fillStyle = '#304051';
+	    //画竖线 
+	    context.beginPath();
+	    context.moveTo(lineX, liney0); 
+	    context.lineTo(lineX, liney1);
+	    context.closePath();
+	    context.stroke();
+	    //画横线 
+	    context.beginPath();
+	    context.moveTo(linex0, lineY);
+	    context.lineTo(linex1, lineY);
+	    context.closePath();
+	    context.stroke();
+    }
+
+</script>
+
+</body>
+
+</html>
